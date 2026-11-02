@@ -14,7 +14,7 @@ The training notebook downloads the original UCI ZIP archive. One complete date 
 
 ## c. GitHub Repository Link
 
-
+[https://github.com/Kasi-2026ak05373/2026AK05373_Room_Occupancy_Estimation_ML](https://github.com/Kasi-2026ak05373/2026AK05373_Room_Occupancy_Estimation_ML)
 
 ## d. Models used
 

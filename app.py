@@ -165,11 +165,15 @@ comparison = pd.DataFrame(
     {model_names[key]: result["metrics"] for key, result in results.items()}
 ).T[METRIC_COLUMNS]
 
-st.caption(f"{data_origin} · {len(evaluation_data):,} labeled observations")
+# Show the data source prominently so it is clear the scores come from the saved models run on this data.
+st.info(
+    f"**Data source:** {data_origin} · {len(evaluation_data):,} labeled rows.\n\n"
+    "Scores below are calculated by the saved models (loaded from `model/`, not retrained) on this data."
+)
 st.subheader("Model comparison")
 st.dataframe(
     comparison.style.format("{:.3f}"),
-    use_container_width=True,
+    width="stretch",
     hide_index=False,
 )
 
@@ -203,7 +207,7 @@ with left:
     axis.set_xlabel("Predicted occupancy")
     axis.set_ylabel("Actual occupancy")
     figure.tight_layout()
-    st.pyplot(figure, use_container_width=True)
+    st.pyplot(figure, width="stretch")
     plt.close(figure)
 
 with right:
@@ -217,4 +221,4 @@ with right:
         output_dict=True,
         zero_division=0,
     )
-    st.dataframe(pd.DataFrame(report).T.style.format("{:.3f}"), use_container_width=True)
+    st.dataframe(pd.DataFrame(report).T.style.format("{:.3f}"), width="stretch")
