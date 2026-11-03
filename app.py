@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import joblib
@@ -16,8 +15,24 @@ from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precisi
 
 # Resolve paths relative to this file so the app works no matter where it is launched from.
 ROOT = Path(__file__).resolve().parent
-# Folder written by training.ipynb: fitted .joblib models and metadata.json.
+# Folder written by training.ipynb: fitted .joblib models.
 MODEL_DIR = ROOT / "model"
+# Model inputs and labels used by the UCI Room Occupancy Estimation dataset.
+FEATURE_COLUMNS = [
+    "S1_Temp", "S2_Temp", "S3_Temp", "S4_Temp",
+    "S1_Light", "S2_Light", "S3_Light", "S4_Light",
+    "S1_Sound", "S2_Sound", "S3_Sound", "S4_Sound",
+    "S5_CO2", "S5_CO2_Slope", "S6_PIR", "S7_PIR",
+]
+TARGET_COLUMN = "Room_Occupancy_Count"
+CLASS_LABELS = [0, 1, 2, 3]
+MODEL_NAMES = {
+    "logistic_regression": "Logistic Regression",
+    "decision_tree": "Decision Tree",
+    "knn": "K-Nearest Neighbors",
+    "gaussian_nb": "Gaussian Naive Bayes",
+    "support_vector_machine": "Support Vector Machine",
+}
 # Metric names, in the order they appear in the comparison table and metric cards.
 METRIC_COLUMNS = ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]
 
@@ -48,15 +63,15 @@ st.markdown(
 
 # Cache the models so they are loaded from disk once, not on every widget interaction.
 @st.cache_resource
-def load_artifacts() -> tuple[dict, dict]:
-    # metadata.json lists the model keys, feature names, target and class labels.
-    with (MODEL_DIR / "metadata.json").open(encoding="utf-8") as metadata_file:
-        metadata = json.load(metadata_file)
-    estimators = {
+def load_estimators() -> dict:
+    return {
         key: joblib.load(MODEL_DIR / f"{key}.joblib")
-        for key in metadata["models"]
+        for key in MODEL_NAMES
     }
-    return metadata, estimators
+
+
+def mark_upload_changed() -> None:
+    st.session_state["upload_changed"] = True
 
 
 # Score one fitted model on the evaluation data and return its predictions and six metrics.
@@ -85,46 +100,67 @@ def evaluate(estimator, features: pd.DataFrame, target: pd.Series, labels: list[
 
 
 # Page header.
-st.title("Room occupancy estimation")
-st.caption("A four-class sensor benchmark · UCI Machine Learning Repository")
+st.title("Room Occupancy Estimation")
+st.caption(
+    "A four-class sensor benchmark · "
+    "UCI Room Occupancy Estimation · "
+    "[View dataset here](https://archive.ics.uci.edu/dataset/864/room+occupancy+estimation)"
+)
 
 # Stop early with a clear message if training.ipynb has not been run yet.
-if not (MODEL_DIR / "metadata.json").exists():
+missing_models = [
+    key for key in MODEL_NAMES
+    if not (MODEL_DIR / f"{key}.joblib").is_file()
+]
+if missing_models:
     st.error("Saved models are missing. Run all cells in `training.ipynb` before starting the app.")
     st.stop()
 
-# Load the saved models and unpack the names the rest of the app needs.
-metadata, estimators = load_artifacts()
-feature_columns = metadata["features"]
-target_column = metadata["target"]
-class_labels = metadata["class_labels"]
-# Maps model key (e.g. "knn") to display name (e.g. "K-Nearest Neighbors").
-model_names = metadata["models"]
+# Load the saved models.
+estimators = load_estimators()
 
 # Sidebar: upload control, model picker and a summary of the training data.
 with st.sidebar:
     st.subheader("Evaluation data")
-    uploaded_file = st.file_uploader("Upload a labeled test CSV", type=["csv"])
+    uploaded_file = st.file_uploader(
+        "Upload a labeled test CSV",
+        type=["csv"],
+        key="evaluation_upload",
+        on_change=mark_upload_changed,
+    )
     st.caption("Include all 16 sensor columns and `Room_Occupancy_Count`.")
-    selected_model = st.selectbox("Model detail", options=list(model_names), format_func=model_names.get)
+    st.download_button(
+        label="Download Test_Data.csv",
+        data=(ROOT / "test_data.csv").read_bytes(),
+        file_name="test_data.csv",
+        mime="text/csv",
+        icon=":material/download:",
+        on_click="ignore",
+        width="stretch",
+    )
+    selected_model = st.radio(
+        "Select a saved model",
+        options=list(MODEL_NAMES),
+        format_func=MODEL_NAMES.get,
+    )
     st.divider()
-    st.caption(f"Trained on {metadata['train_rows']:,} rows · {len(feature_columns)} sensor features")
+    st.caption(f"{len(FEATURE_COLUMNS)} sensor features · {len(MODEL_NAMES)} saved models")
 
 # Use the bundled held-out day unless the user uploads their own labeled CSV.
 try:
     if uploaded_file is None:
         evaluation_data = pd.read_csv(ROOT / "test_data.csv")
-        data_origin = f"Bundled held-out day: {metadata['test_day']}"
+        data_origin = "Held-out test data"
     else:
         evaluation_data = pd.read_csv(uploaded_file)
-        data_origin = f"Uploaded file: {uploaded_file.name}"
+        data_origin = f"Evaluated on : ({uploaded_file.name})"
 except (OSError, pd.errors.ParserError) as error:
     st.error(f"Could not read the CSV: {error}")
     st.stop()
 
 # Validate the data before scoring. Each check shows an error and stops the run if it fails.
 # 1) All 16 sensor columns and the target column must be present.
-required_columns = feature_columns + [target_column]
+required_columns = FEATURE_COLUMNS + [TARGET_COLUMN]
 missing_columns = [column for column in required_columns if column not in evaluation_data.columns]
 if missing_columns:
     st.error(f"Missing required columns: {', '.join(missing_columns)}")
@@ -135,8 +171,8 @@ if evaluation_data.empty:
     st.stop()
 
 # 3) Convert values to numbers. Anything non-numeric becomes NaN and is caught by the next check.
-features = evaluation_data[feature_columns].apply(pd.to_numeric, errors="coerce")
-target = pd.to_numeric(evaluation_data[target_column], errors="coerce")
+features = evaluation_data[FEATURE_COLUMNS].apply(pd.to_numeric, errors="coerce")
+target = pd.to_numeric(evaluation_data[TARGET_COLUMN], errors="coerce")
 if features.isna().any().any() or target.isna().any():
     st.error("Sensor features and target values must be numeric and contain no missing values.")
     st.stop()
@@ -145,32 +181,48 @@ if not target.mod(1).eq(0).all():
     st.error("Occupancy target values must be whole numbers: 0, 1, 2, or 3.")
     st.stop()
 # 5) Every label must be a class the models were trained on.
-unknown_labels = sorted(set(target.astype(int)) - set(class_labels))
+unknown_labels = sorted(set(target.astype(int)) - set(CLASS_LABELS))
 if unknown_labels:
     st.error(f"Target values not present in the trained models: {unknown_labels}")
     st.stop()
 target = target.astype(int)
 # 6) AUC needs at least one example of every class, so all four classes must be present.
-if set(target) != set(class_labels):
+if set(target) != set(CLASS_LABELS):
     st.error("The labeled test data must contain all four occupancy classes to calculate multiclass AUC.")
     st.stop()
 
 # Score every saved model on the same validated data.
 results = {
-    key: evaluate(estimator, features, target, class_labels)
+    key: evaluate(estimator, features, target, CLASS_LABELS)
     for key, estimator in estimators.items()
 }
+if st.session_state.pop("upload_changed", False):
+    if uploaded_file is None:
+        st.toast("Showing results for the held-out test data", icon=":material/check_circle:")
+    else:
+        st.toast(f"Results refreshed using {uploaded_file.name}", icon=":material/check_circle:")
+
 # Build the comparison table: one row per model, one column per metric.
 comparison = pd.DataFrame(
-    {model_names[key]: result["metrics"] for key, result in results.items()}
+    {MODEL_NAMES[key]: result["metrics"] for key, result in results.items()}
 ).T[METRIC_COLUMNS]
 
-# Show the data source prominently so it is clear the scores come from the saved models run on this data.
-st.info(
-    f"**Data source:** {data_origin} · {len(evaluation_data):,} labeled rows.\n\n"
-    "Scores below are calculated by the saved models (loaded from `model/`, not retrained) on this data."
-)
-st.subheader("Model comparison")
+if uploaded_file is None:
+    result_source = data_origin
+    st.info(
+        f"**Model evaluation on held-out test data** · {len(evaluation_data):,} labeled rows.\n\n"
+        "Metrics below are calculated by applying each saved model to this held-out test data."
+    )
+else:
+    result_source = data_origin
+    st.success(
+        f"**Model evaluation on your uploaded data** · {uploaded_file.name} · "
+        f"{len(evaluation_data):,} labeled rows.\n\n"
+        
+        
+    )
+
+st.subheader(f"Model comparison · {result_source}")
 st.dataframe(
     comparison.style.format("{:.3f}"),
     width="stretch",
@@ -179,7 +231,7 @@ st.dataframe(
 
 # Detailed results for the model chosen in the sidebar.
 detail = results[selected_model]
-st.subheader(f"{model_names[selected_model]} · test results")
+st.subheader(f"{MODEL_NAMES[selected_model]} · {result_source}")
 # One metric card per column.
 metric_columns = st.columns(6)
 for column, metric in zip(metric_columns, METRIC_COLUMNS):
@@ -190,7 +242,7 @@ left, right = st.columns([1, 1.15], gap="large")
 with left:
     st.markdown("#### Confusion matrix")
     # Rows are actual occupancy classes, columns are predicted classes.
-    matrix = confusion_matrix(target, detail["predictions"], labels=class_labels)
+    matrix = confusion_matrix(target, detail["predictions"], labels=CLASS_LABELS)
     figure, axis = plt.subplots(figsize=(5.4, 4.2))
     sns.heatmap(
         matrix,
@@ -198,8 +250,8 @@ with left:
         fmt="d",
         cmap="crest",
         cbar=False,
-        xticklabels=class_labels,
-        yticklabels=class_labels,
+        xticklabels=CLASS_LABELS,
+        yticklabels=CLASS_LABELS,
         linewidths=0.5,
         linecolor="white",
         ax=axis,
@@ -216,8 +268,8 @@ with right:
     report = classification_report(
         target,
         detail["predictions"],
-        labels=class_labels,
-        target_names=[str(label) for label in class_labels],
+        labels=CLASS_LABELS,
+        target_names=[str(label) for label in CLASS_LABELS],
         output_dict=True,
         zero_division=0,
     )
