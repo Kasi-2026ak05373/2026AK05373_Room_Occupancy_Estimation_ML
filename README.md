@@ -16,6 +16,8 @@ The training notebook downloads the original UCI ZIP archive. One complete date 
 
 [https://github.com/Kasi-2026ak05373/2026AK05373_Room_Occupancy_Estimation_ML](https://github.com/Kasi-2026ak05373/2026AK05373_Room_Occupancy_Estimation_ML)
 
+Live Streamlit app: [https://2026ak05373-room-occupancy-estimation-ml.streamlit.app/](https://2026ak05373-room-occupancy-estimation-ml.streamlit.app/)
+
 ## d. Models used
 
 All scores below are calculated on the same whole-day test set. Precision, recall, and F1 use macro averaging so each occupancy class contributes equally. AUC is macro one-vs-rest. The result table is populated by running `training.ipynb`.
@@ -30,16 +32,26 @@ All scores below are calculated on the same whole-day test set. Precision, recal
 
 ### Performance observations
 
-Macro-averaged scores are included alongside accuracy to make performance on the less frequent occupied-room classes visible. The KNN model leads on accuracy, macro recall, macro F1, and MCC. The SVM achieves the highest macro AUC, while its thresholded class predictions score below KNN on accuracy and macro F1.
+The test day is imbalanced: 637 rows of class 0, 205 of class 1, 257 of class 2, and 363 of class 3. Macro-averaged scores are reported so that the smaller classes count equally. Per-class recall (class 0 / 1 / 2 / 3) was computed from the saved models on `test_data.csv`:
+
+| Model | Recall class 0 | Recall class 1 | Recall class 2 | Recall class 3 |
+| --- | ---: | ---: | ---: | ---: |
+| Logistic Regression | 0.994 | 0.980 | 1.000 | 0.601 |
+| Decision Tree | 0.998 | 0.941 | 0.911 | 0.366 |
+| KNN | 0.992 | 0.956 | 0.949 | 0.705 |
+| Gaussian Naive Bayes | 0.750 | 0.912 | 1.000 | 0.000 |
+| Support Vector Machine | 0.972 | 0.946 | 1.000 | 0.358 |
+
+Class 3 is the hardest class for every model. Most errors are class-3 rows predicted as class 2 (for example, 144 of 363 for Logistic Regression, 228 of 363 for Decision Tree, and 233 of 363 for SVM). This also pulls down class 2 precision (0.636 for Logistic Regression, 0.494 for Decision Tree, 0.497 for SVM). Gaussian NB never predicts class 3. Accuracy and macro F1 therefore hide a large part of the difference between models, and a model that looks strong on accuracy can still miss the four-occupant case.
 
 | ML Model Name | Observation about model performance |
 | --- | --- |
-| Logistic Regression | Strong and consistent scores across the four classes; second-highest macro F1 and a competitive MCC. |
-| Decision Tree | Moderate results; lower macro F1 and AUC than the linear and distance/kernel-based alternatives on this held-out day. |
-| KNN | Best overall by macro F1 (0.8922), accuracy (0.9083), macro recall (0.9007), and MCC (0.8751). |
-| Gaussian Naive Bayes | Lowest scores overall, suggesting its conditional-independence and Gaussian assumptions fit these sensor readings less well. |
-| Support Vector Machine | Highest macro AUC (0.9937), but lower accuracy and macro F1 than KNN at the default decision rule. |
-| Overall winner for this dataset | KNN, selected by the highest macro F1; it also leads on accuracy, macro recall, and MCC. |
+| Logistic Regression | Recall of at least 0.98 on classes 0, 1 and 2, but only 0.601 on class 3 (144 of 363 predicted as class 2). Macro F1 0.8771 and MCC 0.8635 are the second-highest of the five. |
+| Decision Tree | Recall of 0.911 on class 2 and 0.366 on class 3 (228 of 363 class-3 rows predicted as class 2). Macro F1 0.7798 and MCC 0.7657 are the second-lowest of the five. The class 2/3 split is the main source of error. |
+| KNN | Best on macro F1 (0.8922), accuracy (0.9083), macro recall (0.9007) and MCC (0.8751). It also has the best class 3 recall (0.705), although 107 of 363 class-3 rows are still predicted as class 2. |
+| Gaussian Naive Bayes | Lowest on accuracy (0.6306) and macro F1 (0.5897). It never predicts class 3 and predicts 115 class-0 rows as class 3. Its Gaussian feature assumption fits these sensor readings poorly. |
+| Support Vector Machine | Highest macro AUC (0.9937), so its ranking of classes is strong. At the default decision rule, though, 233 of 363 class-3 rows are predicted as class 2, which gives a macro F1 of 0.7870 and places it below KNN and Logistic Regression. |
+| Overall winner for this dataset | KNN, selected by the highest macro F1 (0.8922). It is also the best model on class 3 recall, but about 30% of class-3 rows are still predicted as class 2, which is the remaining limit of all five models on this held-out day. |
 
 ## Run locally
 
@@ -53,7 +65,7 @@ Next, open `training.ipynb` in VS Code or Jupyter, select the project Python env
 streamlit run app.py
 ```
 
-In the app, upload any labeled CSV containing the 16 sensor columns and `Room_Occupancy_Count`. The app shows scores for all five saved models, plus the selected model's confusion matrix and classification report. Uploaded files must include all four target classes so multiclass AUC is defined.
+The app is a single page. A left-hand sidebar navigates between the dataset overview (with a download link for `test_data.csv`), the model comparison, and one view per model showing its metrics, confusion matrix and classification report. The sidebar also has an optional CSV upload. Without an upload, the app scores the bundled held-out test data. An uploaded file must contain the 16 sensor columns and `Room_Occupancy_Count`, and it must include all four target classes so multiclass AUC is defined.
 
 ## Files
 
