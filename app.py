@@ -130,6 +130,15 @@ with st.sidebar:
     st.divider()
     st.markdown("### Evaluate your data")
     uploaded_file = st.file_uploader("Upload a labeled CSV (optional)", type=["csv"])
+    st.download_button(
+        label="Download test data (CSV)",
+        data=(ROOT / "test_data.csv").read_bytes(),
+        file_name="test_data.csv",
+        mime="text/csv",
+        icon=":material/download:",
+        on_click="ignore",
+        width="stretch",
+    )
 
 # Overview: built from the bundled held-out test data.
 try:
@@ -176,13 +185,22 @@ if view == "overview":
         "Download the test CSV above and upload it in the sidebar to evaluate the models on your own copy. "
         "Your file must include the 16 sensor columns and `Room_Occupancy_Count`."
     )
-    st.markdown("**Occupancy class distribution in the test data**")
-    distribution_column, _ = st.columns([1, 2])
-    with distribution_column:
-        st.dataframe(
-            bundled_test[TARGET_COLUMN].value_counts().sort_index().rename("Rows").rename_axis("Occupancy").to_frame(),
-            width="stretch",
-        )
+    st.markdown("**Occupancy class distribution**")
+    # Train counts come from the training.ipynb output; the app only ships the held-out test rows.
+    train_distribution = pd.Series(
+        {0: 7591, 1: 254, 2: 491, 3: 331}, name="Rows", dtype="int64"
+    ).rename_axis("Occupancy")
+    test_distribution = (
+        bundled_test[TARGET_COLUMN].value_counts().sort_index()
+        .rename("Rows").rename_axis("Occupancy")
+    )
+    train_column, test_column, _ = st.columns([1, 1, 2])
+    with train_column:
+        st.markdown("Train data")
+        st.dataframe(train_distribution.to_frame(), width="stretch")
+    with test_column:
+        st.markdown("Test data (held-out day)")
+        st.dataframe(test_distribution.to_frame(), width="stretch")
 
 # Without an upload, the bundled held-out test data is used.
 if uploaded_file is None:

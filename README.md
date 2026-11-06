@@ -2,7 +2,7 @@
 
 ## a. Problem statement
 
-Estimate the number of people in a room (0, 1, 2, or 3) from environmental sensor readings. Five classification algorithms are trained on the same dataset and compared on a held-out day. The Streamlit app loads saved estimators and evaluates labeled test CSV files without fitting or retraining.
+Predict the number of occupants in a single room (0, 1, 2, or 3) from 16 readings of temperature, light, sound, CO2 and PIR motion sensors. Five classifiers are trained on earlier days and evaluated on one held-out day (22 Dec 2017), where the chosen metric is macro F1, because the occupancy classes are imbalanced.
 
 ## b. Dataset description
 
